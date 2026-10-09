@@ -101,9 +101,9 @@
             this.checkBox1.Font = new System.Drawing.Font("Arial", 14F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.checkBox1.Location = new System.Drawing.Point(51, 240);
             this.checkBox1.Name = "checkBox1";
-            this.checkBox1.Size = new System.Drawing.Size(160, 36);
+            this.checkBox1.Size = new System.Drawing.Size(128, 36);
             this.checkBox1.TabIndex = 2;
-            this.checkBox1.Text = "Paper-Bill";
+            this.checkBox1.Text = "test-bill";
             this.checkBox1.UseVisualStyleBackColor = true;
             this.checkBox1.CheckedChanged += new System.EventHandler(this.checkBox1_CheckedChanged);
             // 

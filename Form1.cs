@@ -11,6 +11,41 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 
+
+
+/* day1 -. name and mobile 
+ *  default 
+ *  name 
+ *  mobile 
+ *  paper
+ *  reports 
+ *  
+ *  
+ *  day2 -gui(current )
+ *  
+ *  
+ *  default data 
+ *  hardcode
+ *  
+ *  name ;
+ *  mobile = "customer_no"
+ *  paper = false
+ *  
+ *  
+ *
+ *  paper_check 
+ * 
+ * 
+ * gui ->(current) 
+ * paper check 
+ * 
+ * default_data : 
+ * name -> true or false
+ * mobile -> 
+ * 
+ * 
+ * 
+ */
 namespace test_new_popup
 {
     public partial class Form1 : Form
@@ -22,10 +57,10 @@ namespace test_new_popup
 
         // Current transaction fields captured at click time
         private string currentMobile = "0000000000";
-        private string currentName = "nill";
+        private string currentName = "";
         private bool currentPaperState = false;
         private bool showGender = false;
-        private string selectedGender = "Male";
+        private string selectedGender = "";
         private bool showUnder18 = false;
         private bool isUnder18 = false;
 
@@ -38,6 +73,8 @@ namespace test_new_popup
         private const int SC_CLOSE = 0xF060;
         private const int VK_ESCAPE = 0x1B;
 
+        private bool isSubmit = false;
+
         private static readonly Font Line1Font = new Font("Segoe UI Semibold", 14);
         private static readonly Font Line2Font = new Font("Segoe UI", 11);
 
@@ -47,6 +84,7 @@ namespace test_new_popup
             CenterToScreen();
             InitializeComponent();
             InitializeSuggestionBoxes();
+            GetValidatedData();
 
             this.MaximizeBox = false;
             this.ControlBox = true;
@@ -68,40 +106,233 @@ namespace test_new_popup
 
             button1.Click += (s, e) =>
             {
+                isSubmit = true;   // mark submit
+
                 currentMobile = boxMobile.Text.Trim();
                 currentName = boxName.Text.Trim();
-                currentPaperState = checkBox1.Checked; // Capture checkbox status
+                currentPaperState = checkBox1.Checked;
 
-                if (string.IsNullOrEmpty(currentName)) currentName = "nill";
-                if (string.IsNullOrEmpty(currentMobile)) currentMobile = "0000000000";
-
-                // res.json dictionary logic: still check for duplicates to grow autocomplete pool
-                if (!contacts.Any(c => c.phone == currentMobile))
+                // ✅ CASE 1: BOTH EMPTY
+                if (string.IsNullOrWhiteSpace(currentMobile) &&
+                    string.IsNullOrWhiteSpace(currentName))
                 {
-                    contacts.Add((currentMobile, currentName));
+                    // ✅ Paper checkbox mandatory
+                    if (!checkBox1.Checked)
+                    {
+                        MessageBox.Show("Select Paper-Bill or enter mobile",
+                            "Validation",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+
+                        checkBox1.Focus();
+                        return;
+                    }
+
+                    // ✅ allow if paper checked
+                }
+                else
+                {
+                    // ✅ CASE 2: MOBILE VALIDATION (if entered)
+                    if (!string.IsNullOrWhiteSpace(currentMobile))
+                    {
+                        if (currentMobile.Length != 10 || !currentMobile.All(char.IsDigit))
+                        {
+                            MessageBox.Show("Enter valid mobile number",
+                                "Invalid Mobile",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Warning);
+
+                            boxMobile.Focus();
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        // ✅ CASE 3: NAME only (no mobile) → NOT allowed for E‑Bill
+                        MessageBox.Show("Mobile number required for E‑Bill",
+                            "Validation",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+
+                        boxMobile.Focus();
+                        return;
+                    }
+                }
+
+                // NAME DUPLICATE CHECK (only if name entered)
+                if (!string.IsNullOrWhiteSpace(currentName))
+                {
+                    if (contacts.Any(c =>
+                        c.name.Equals(currentName, StringComparison.OrdinalIgnoreCase) &&
+                        c.phone != currentMobile))
+                    {
+                        MessageBox.Show("Name already used for another number",
+                            "Warning",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+
+                        boxName.Focus();
+                        return;
+                    }
+                }
+
+                // ONLY SET AFTER SUCCESS
+                isSubmit = true;
+
+                // Only add if name is NOT empty
+                if (!string.IsNullOrWhiteSpace(currentName))
+                {
+                    if (!contacts.Any(c => c.phone == currentMobile))
+                    {
+                        contacts.Add((currentMobile, currentName));
+                    }
                 }
                 string paper = "0";
                 if (currentPaperState) paper = "1";
                 else paper = "0";
                 string args = $"{currentMobile} \"{currentName}\" {paper} ";
-                var psi = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = @"C:\BillBox\common\configs\handler.exe",
-                    Arguments = args,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden
-                };
-                Process.Start(psi);
                 this.Close();
             };
+        }
+
+        private JObject GetValidatedData()
+        {
+            string defaultPath = @"C:\BillBox\common\configs\default_data.json";
+
+            JObject template = new JObject
+            {
+                ["name"] = "",
+                ["mobile"] = "0000000000",
+                ["paper"] = false,
+                ["under18"] = false,
+                ["gender"] = "",
+                ["reports"] = false,
+                ["is_submit"] = false
+            };
+
+            try
+            {
+                if (!File.Exists(defaultPath))
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(defaultPath));
+                    File.WriteAllText(defaultPath, template.ToString(Newtonsoft.Json.Formatting.Indented));
+                    return template;
+                }
+
+                JObject current = JObject.Parse(File.ReadAllText(defaultPath));
+
+                foreach (var prop in template.Properties())
+                {
+                    string key = prop.Name;
+                    JToken def = prop.Value;
+                    JToken cur = current[key];
+
+                    if (cur == null)
+                    {
+                        current[key] = def;
+                        continue;
+                    }
+
+                    switch (key)
+                    {
+                        case "name":
+                            if (cur.Type != JTokenType.String)
+                                current[key] = "";
+                            break;
+
+                        case "mobile":
+                            string mobile = cur.ToString();
+
+                            // ✅ ALLOW BOTH VALUES
+                            if (mobile != "0000000000" &&
+                                mobile != "customer_no" &&
+                                (mobile.Length != 10 || !mobile.All(char.IsDigit)))
+                            {
+                                current[key] = "0000000000";
+                            }
+                            break;
+
+                        case "paper":
+                        case "under18":
+                        case "reports":
+                        case "is_submit":
+                            if (cur.Type != JTokenType.Boolean)
+                                current[key] = def;
+                            break;
+
+                        case "gender":
+                            string g = cur.ToString().ToLower();
+                            if (g != "" && g != "male" && g != "female")
+                                current[key] = "";
+                            break;
+                    }
+                }
+
+                // ✅ ALWAYS rewrite
+                File.WriteAllText(defaultPath, current.ToString(Newtonsoft.Json.Formatting.Indented));
+
+                return current;
+            }
+            catch
+            {
+                File.WriteAllText(defaultPath, template.ToString(Newtonsoft.Json.Formatting.Indented));
+                return template;
+            }
+        }
+
+
+
+
+        private void WriteMergedDataJson()
+        {
+            string defaultPath = @"C:\BillBox\common\configs\default_data.json";
+
+            JObject data = GetValidatedData();
+
+
+            // ✅ Common fields
+            if (!string.IsNullOrWhiteSpace(currentName))
+                data["name"] = currentName;
+
+            if (!string.IsNullOrWhiteSpace(currentMobile) &&
+     currentMobile != "0000000000")
+            {
+                data["mobile"] = currentMobile;
+            }
+
+
+            data["paper"] = currentPaperState;
+
+            // ✅ Only this popup fields
+            if (showGender)
+                data["gender"] = selectedGender;
+
+            if (showUnder18)
+                data["under18"] = isUnder18;
+
+            data["is_submit"] = true;
+
+            // ❌ DO NOT TOUCH reports
+
+            SafeWriteFile(DataJsonPath, data.ToString(Formatting.Indented));
+        }
+
+        private void SafeWriteFile(string path, string content)
+        {
+            string tempPath = path + ".tmp";
+
+            File.WriteAllText(tempPath, content);
+
+            File.Copy(tempPath, path, true);
+
+            File.Delete(tempPath);
         }
 
         private void LoadAppSettings()
         {
             try
             {
-                string path = @"C:\BillBox\common\configs\app_settings.json";
+                string path = @"C:\BillBox\common\configs\popup_config.json";
 
                 if (!File.Exists(path))
                     return;
@@ -145,6 +376,11 @@ namespace test_new_popup
             // Visibility
             panelGender.Visible = showGender;
             radioUnder18.Visible = showUnder18;
+
+            // remove default checks if any
+            radioMale.Checked = false;
+            radioFemale.Checked = false;
+            selectedGender = "";
 
             radioMale.GotFocus += (s, evt) =>
             {
@@ -306,33 +542,46 @@ namespace test_new_popup
         {
             try
             {
+
+                string defaultPath = @"C:\BillBox\common\configs\default_data.json";
+
+                JObject data = GetValidatedData();
+
+
+                // ✅ USER CLICKED X
+                if (!isSubmit)
+                {
+                    data["is_submit"] = false;
+
+                    SafeWriteFile(DataJsonPath, data.ToString(Formatting.Indented));
+                    return;
+                }
+
                 string directory = Path.GetDirectoryName(ResJsonPath);
                 if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
                 {
                     Directory.CreateDirectory(directory);
                 }
 
-                // 1. Maintain res.json as the persistent array pool for suggestion indexing
+                // ✅ SAVE res.json → ONLY mobile + name
                 var resRoot = new JObject
                 {
-                    ["records"] = JArray.FromObject(contacts.Select(c => new JObject
-                    {
-                        ["customer_phone"] = c.phone,
-                        ["customer_name"] = c.name
-                    }))
+                    ["records"] = JArray.FromObject(
+                        contacts
+                            .Where(c => !string.IsNullOrWhiteSpace(c.name)) // filter
+                            .Select(c => new JObject
+                            {
+                                ["customer_phone"] = c.phone,
+                                ["customer_name"] = c.name
+                            })
+                    )
                 };
-                File.WriteAllText(ResJsonPath, resRoot.ToString(Formatting.Indented));
 
-                // 2. Overwrite data.json as a flat layout with only the single, active entry
-                var dataRoot = new JObject
-                {
-                    ["name"] = currentName,
-                    ["mobile"] = currentMobile,
-                    ["paper"] = currentPaperState,
-                    ["gender"] = showGender ? selectedGender : "",
-                    ["under18"] = showUnder18 ? isUnder18 : false
-                };
-                File.WriteAllText(DataJsonPath, dataRoot.ToString(Formatting.Indented));
+                SafeWriteFile(ResJsonPath, resRoot.ToString(Formatting.Indented));
+
+
+                // SAVE data.json → FULL DATA (TEMP)
+                WriteMergedDataJson();
             }
             catch (Exception ex)
             {
@@ -494,7 +743,7 @@ namespace test_new_popup
                 if (e.KeyCode == Keys.Up)
                 {
                     e.SuppressKeyPress = true;
-                    boxMobile.Focus();   //  important fix
+                    boxMobile.Focus(); //  important fix
                     return;
                 }
 
@@ -516,7 +765,7 @@ namespace test_new_popup
 
             var parts = item.Split('|');
             string line1 = parts.Length > 0 ? parts[0].Trim() : "";
-            string line2 = parts.Length > 1 ? parts[1].Trim() : "";
+            string line2 = parts.Length > 1 ? parts[1].Trim() : ""; 
 
             if ((e.State & DrawItemState.Selected) == DrawItemState.Selected)
                 g.FillRectangle(Brushes.LightBlue, e.Bounds);
@@ -645,7 +894,6 @@ namespace test_new_popup
 
         private void checkbox2_CheckedChanged_1(object sender, EventArgs e)
         {
-
 
         }
     }
